@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <title>Gestor de Tareas — Paradigma Declarativo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        :root { --radius: 14px; --pad: 14px; }
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+            margin: 0; padding: 2rem; background: #0f172a; color: #e2e8f0;
+            display: grid; place-items: start center; min-height: 100dvh;
+        }
+        main { width: min(880px, 100%); display: grid; gap: 1rem; }
+        header h1 { margin: 0 0 .25rem 0; font-size: 1.6rem; }
+        header p { margin: 0; color: #94a3b8; }
+        .card {
+            background: #111827; border: 1px solid #1f2937; border-radius: var(--radius);
+            box-shadow: 0 10px 25px rgba(0,0,0,.35);
+        }
+        form.add {
+            display: grid; grid-template-columns: 1fr auto; gap: .75rem; padding: var(--pad);
+            border-bottom: 1px solid #1f2937;
+        }
+        form.add input[type="text"] {
+            padding: .85rem 1rem; border-radius: 12px; border: 1px solid #334155;
+            background: #0b1220; color: #e2e8f0; outline: none;
+        }
+        form.add button {
+            padding: .85rem 1.1rem; border-radius: 12px; border: 1px solid #334155;
+            background: #22c55e; color: #07110a; font-weight: 700; cursor: pointer;
+        }
+        .controls {
+            display: flex; align-items: center; justify-content: space-between; padding: var(--pad);
+        }
+        .filters { display: flex; gap: .5rem; flex-wrap: wrap; }
+        .filters label {
+            display: inline-flex; align-items: center; gap: .4rem; padding: .35rem .6rem;
+            border-radius: 999px; border: 1px solid #334155; background: #0b1220; cursor: pointer;
+            user-select: none; font-size: .95rem;
+        }
+        .filters input { accent-color: #22c55e; }
+        .counter { color: #94a3b8; font-size: .95rem; }
+        ul#lista {
+            list-style: none; margin: 0; padding: 0;
+            display: grid; gap: .5rem; padding: var(--pad);
+        }
+        .item {
+            display: grid; grid-template-columns: 1.5rem 1fr auto; gap: .75rem;
+            align-items: center; padding: .75rem; border: 1px solid #1f2937;
+            background: #0b1220; border-radius: 12px;
+        }
+        .item input[type="checkbox"] { width: 1.1rem; height: 1.1rem; accent-color: #22c55e; }
+        .desc { display: grid; gap: .25rem; }
+        .desc p { margin: 0; }
+        .muted { color: #94a3b8; font-size: .9rem; }
+        .done p { text-decoration: line-through; color: #64748b; }
+        .actions { display: flex; gap: .4rem; }
+        .btn {
+            padding: .5rem .7rem; border-radius: 10px; border: 1px solid #334155; cursor: pointer;
+            background: #0f172a; color: #e2e8f0;
+        }
+        .btn.edit { border-color: #3b82f6; }
+        .btn.save { background: #22c55e; color: #07110a; border-color: #16a34a; font-weight: 700; }
+        .btn.delete { border-color: #ef4444; color: #fecaca; }
+        .empty {
+            padding: 2rem; text-align: center; color: #94a3b8;
+            border-top: 1px dashed #334155;
+        }
+        footer { color: #94a3b8; font-size: .9rem; text-align: center; }
+        @media (max-width: 620px) {
+            .item { grid-template-columns: 1.3rem 1fr; }
+            .actions { grid-column: 1 / -1; justify-content: end; }
+        }
+    </style>
+</head>
+<body>
+<main>
+    <header>
+        <h1>Gestor de Tareas</h1>
+    </header>
+
+    <section class="card">
+        <!-- Crear (C) -->
+        <form class="add" id="form-add" autocomplete="off">
+            <input id="input-desc" type="text" placeholder="Descripción de la nueva tarea…" required minlength="1" />
+            <button type="submit">Agregar</button>
+        </form>
+
+        <!-- Controles de vista -->
+        <div class="controls">
+            <div class="filters" id="filters">
+                <label><input type="radio" name="filtro" value="todas" checked /> Todas</label>
+                <label><input type="radio" name="filtro" value="pendientes" /> Pendientes</label>
+                <label><input type="radio" name="filtro" value="finalizadas" /> Finalizadas</label>
+                <label><input type="radio" name="filtro" value="buscar" /> Buscar</label>
+                <input id="search" type="search" placeholder="Filtrar por texto…" style="display:none;padding:.45rem .6rem;border-radius:10px;border:1px solid #334155;background:#0b1220;color:#e2e8f0;">
+            </div>
+            <div class="counter" id="counter">0 tareas</div>
+        </div>
+
+        <!-- Leer (R) -->
+        <ul id="lista"></ul>
+        <div class="empty" id="empty" hidden>No hay tareas en este listado.</div>
+    </section>
+
+    <footer>Maria Luisa Londoño, Maria Victoria Giraldo, Valentina Hoyos</footer>
+</main>
+
+<!-- Plantilla declarativa para un ítem -->
+<template id="tpl-item">
+    <li class="item" data-id="">
+        <input type="checkbox" class="chk" aria-label="Alternar estado">
+        <div class="desc">
+            <p class="texto"></p>
+            <span class="muted"></span>
+        </div>
+        <div class="actions">
+            <button class="btn edit" type="button">Editar</button>
+            <button class="btn save" type="button" hidden>Guardar</button>
+            <button class="btn delete" type="button">Eliminar</button>
+        </div>
+    </li>
+</template>
+
+<script>
+    // === Estado ===
+    /** @typedef {{id:number, descripcion:string, finalizada:boolean, creado:string}} Tarea */
+    const LS_KEY = "todo_decl_v1";
+    /** @type {Tarea[]} */
+    let tareas = cargar();
+    let filtro = "todas";
+    let busqueda = "";
+
+    // === Utilidades de estado (inmutables) ===
+    const nuevaTarea = (desc) => ({
+        id: (tareas.at(-1)?.id ?? 0) + 1,
+        descripcion: desc.trim(),
+        finalizada: false,
+        creado: new Date().toISOString()
+    });
+
+    const actualizar = (id, patch) =>
+        tareas = tareas.map(t => t.id === id ? { ...t, ...patch } : t);
+
+    const eliminar = (id) =>
+        tareas = tareas.filter(t => t.id !== id);
+
+    const alternar = (id) =>
+        tareas = tareas.map(t => t.id === id ? { ...t, finalizada: !t.finalizada } : t);
+
+    const guardar = () => localStorage.setItem(LS_KEY, JSON.stringify(tareas));
+    function cargar() {
+        try { return JSON.parse(localStorage.getItem(LS_KEY) || "[]"); }
+        catch { return []; }
+    }
+
+    // === Selección declarativa del subconjunto a mostrar ===
+    const seleccionar = () => {
+        let base = tareas;
+        if (filtro === "pendientes") base = base.filter(t => !t.finalizada);
+        if (filtro === "finalizadas") base = base.filter(t => t.finalizada);
+        if (filtro === "buscar" && busqueda.trim() !== "") {
+            const q = busqueda.toLowerCase();
+            base = base.filter(t => t.descripcion.toLowerCase().includes(q));
+        }
+        return base;
+    };
+
+    // === Render (estado → UI) ===
+    const $lista = document.getElementById("lista");
+    const $tpl = document.getElementById("tpl-item");
+    const $empty = document.getElementById("empty");
+    const $counter = document.getElementById("counter");
+    const $search = document.getElementById("search");
+
+    function render() {
+        const data = seleccionar();
+        $lista.innerHTML = "";
+        const frag = document.createDocumentFragment();
+
+        data.forEach(t => {
+            const li = $tpl.content.firstElementChild.cloneNode(true);
+            li.dataset.id = String(t.id);
+            li.querySelector(".chk").checked = t.finalizada;
+
+            const desc = li.querySelector(".desc");
+            const p = li.querySelector(".texto");
+            p.textContent = t.descripcion;
+            if (t.finalizada) desc.classList.add("done"); else desc.classList.remove("done");
+
+            const fecha = new Date(t.creado).toLocaleString();
+            li.querySelector(".muted").textContent = `#${t.id} • creado: ${fecha}`;
+
+            const btnEdit = li.querySelector(".edit");
+            const btnSave = li.querySelector(".save");
+            const btnDel  = li.querySelector(".delete");
+            const chk     = li.querySelector(".chk");
+
+            btnEdit.addEventListener("click", () => {
+                const input = document.createElement("input");
+                input.type = "text";
+                input.value = t.descripcion;
+                input.style.padding = ".4rem .6rem";
+                input.style.borderRadius = "10px";
+                input.style.border = "1px solid #334155";
+                input.style.background = "#0b1220";
+                input.style.color = "#e2e8f0";
+                p.replaceWith(input);
+                btnEdit.hidden = true;
+                btnSave.hidden = false;
+                input.focus();
+                input.addEventListener("keydown", (ev) => {
+                    if (ev.key === "Enter") btnSave.click();
+                    if (ev.key === "Escape") { render(); }
+                });
+                btnSave.onclick = () => {
+                    const val = input.value.trim();
+                    if (!val) { alert("La descripción no puede estar vacía."); return; }
+                    actualizar(t.id, { descripcion: val }); guardar(); render();
+                };
+            });
+
+            chk.addEventListener("change", () => { alternar(t.id); guardar(); render(); });
+            btnDel.addEventListener("click", () => { eliminar(t.id); guardar(); render(); });
+
+            frag.appendChild(li);
+        });
+
+        $lista.appendChild(frag);
+        $empty.hidden = data.length > 0;
+        $counter.textContent = `${data.length} ${data.length === 1 ? "tarea" : "tareas"} (${tareas.filter(x=>!x.finalizada).length} pendientes)`;
+    }
+
+    // === Eventos de IU ===
+    document.getElementById("form-add").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const $input = document.getElementById("input-desc");
+        const val = $input.value.trim();
+        if (!val) return;
+        tareas = [...tareas, nuevaTarea(val)];
+        $input.value = "";
+        guardar(); render();
+    });
+
+    document.getElementById("filters").addEventListener("change", (e) => {
+        if (e.target.name === "filtro") {
+            filtro = e.target.value;
+            $search.style.display = filtro === "buscar" ? "inline-block" : "none";
+            render();
+        }
+    });
+
+    $search.addEventListener("input", (e) => {
+        busqueda = e.target.value;
+        render();
+    });
+
+    // Render inicial
+    render();
+</script>
+</body>
+</html>
